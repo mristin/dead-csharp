@@ -1,0 +1,29 @@
+name: Generate NuGet
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    name: Update NuGet package
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v1
+
+      - name: Install .NET core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '3.1.100'
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.NUGET_API_KEY}}
+
+      - name: Build solution and generate NuGet package
+        working-directory: src
+        run: dotnet pack -c Release -o out
+
+      - name: Push generated package
+        working-directory: src
+        run: dotnet nuget push out/*.nupkg --skip-duplicate --no-symbols true

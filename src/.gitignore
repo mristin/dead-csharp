@@ -1,0 +1,6 @@
+bin/
+obj/
+out/
+DeadCsharp.sln.DotSettings.user
+coverage.json
+coverage.opencover.xml
