@@ -3,11 +3,16 @@ name: Check
 on: [push]
 
 jobs:
-  build:
+  Execute:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@master
- 
+
+      - name: Extract branch name
+        run: |
+          $SOURCE_BRANCH = ${env:GITHUB_REF} -replace 'refs/heads/', ''
+          echo "::set-env name=SOURCE_BRANCH::$SOURCE_BRANCH"
+
       - name: Check the commit message(s)
         uses: mristin/opinionated-commit-message@v1.0.4
 
@@ -32,5 +37,8 @@ jobs:
         working-directory: src
         env:
           COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-        run: dotnet tool run csmacnz.Coveralls --opencover -i DeadCsharp.Test\coverage.opencover.xml --useRelativePaths
-
+        run: |
+          $BRANCH=${env:GITHUB_REF} -replace 'refs/heads/', ''
+          echo "Branch is: $BRANCH"
+          echo "Commit is: $env:GITHUB_SHA"
+          dotnet tool run csmacnz.Coveralls --opencover -i DeadCsharp.Test\coverage.opencover.xml --useRelativePaths --repoToken $env:COVERALLS_REPO_TOKEN --commitId $env:GITHUB_SHA --commitBranch $BRANCH
