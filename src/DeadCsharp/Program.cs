@@ -1,113 +1,88 @@
-﻿using System;
+﻿using Console = System.Console;
+using Environment = System.Environment;
 using System.Collections.Generic;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace SpotDeadCsharp
+// We can not cherry-pick imports from System.CommandLine since InvokeAsync is a necessary extension.
+using System.CommandLine;
+
+namespace DeadCsharp
 {
-    class CommentCollector : CSharpSyntaxWalker
+    public class Program
     {
-        public readonly List<SyntaxTrivia> comments = new List<SyntaxTrivia>();
-
-        public CommentCollector() : base(SyntaxWalkerDepth.StructuredTrivia)
+        private static int Handle(string[] inputs, string[]? excludes, bool remove)
         {
-        }
+            int exitCode = 0;
 
-        public override void VisitTrivia(SyntaxTrivia trivia)
-        {
-            var text = trivia.ToString().Trim();
-            if (text.Length > 0)
+            string cwd = System.IO.Directory.GetCurrentDirectory();
+            IEnumerable<string> paths = Input.MatchFiles(
+                cwd,
+                new List<string>(inputs),
+                new List<string>(excludes ?? new string[0]));
+
+            foreach (string path in paths)
             {
-                comments.Add(trivia);
-            }
+                string programText = System.IO.File.ReadAllText(path);
+                var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(programText);
 
-            base.VisitTrivia(trivia);
-        }
-    }
-
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            const string programText =
-                @"using System;
-using System.Collections;
-using System.Linq;
-using System.Text;
-
-namespace HelloWorld
-{
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            /*
-                 Some multi-line
-                 comment
-            */
-
-            // Some comment
-            // Another comment
-            // probably.dead.code();
-            /* if(dead) */
-            Console.WriteLine(""Hello, World!"");
-        }
-    }
-}";
-            SyntaxTree tree = CSharpSyntaxTree.ParseText(programText);
-            CompilationUnitSyntax root = tree.GetCompilationUnitRoot();
-
-            var collector = new CommentCollector();
-            collector.Visit(root);
-
-            var errors = new List<SyntaxTrivia>();
-
-            foreach (SyntaxTrivia trivia in collector.comments)
-            {
-                string trimmed = trivia.ToString().Trim();
-                if (trimmed.StartsWith("///"))
+                if (remove)
                 {
-                    // Ignore structured comments.
-                    // They most probably include the code on purpose.
-                    continue;
+                    string newProgramText = Inspection.Remove(tree);
+                    System.IO.File.WriteAllText(path, newProgramText);
+                    Console.WriteLine($"FIXED {path}");
                 }
-
-                string[] lines = trimmed.Split(
-                    new[] {"\r\n", "\r", "\n"},
-                    StringSplitOptions.None
-                );
-                
-                Console.WriteLine("LInes: " + lines);
-
-                foreach (string line in lines)
+                else
                 {
-                    string trimmedLine = line.TrimEnd();
-                    
-                    if (trimmedLine.EndsWith("*/"))
+                    IEnumerable<Inspection.Suspect> suspects = Inspection.Inspect(tree);
+
+                    var hasSuspect = new Output.HasSuspect();
+                    IEnumerable<string> lines = Output.Report(path, suspects, hasSuspect);
+
+                    foreach (string line in lines)
                     {
-                        trimmedLine = trimmedLine.Substring(0, trimmedLine.Length - 2).TrimEnd();
+                        Console.WriteLine(line);
                     }
-                    
-                    if (trimmedLine.EndsWith(";") || trimmedLine.EndsWith("(") || trimmedLine.EndsWith("{") ||
-                        trimmedLine.EndsWith(")"))
+
+                    if (hasSuspect.Value)
                     {
-                        errors.Add(trivia);
+                        exitCode = 1;
                     }
                 }
             }
 
-            string path = "somefile.cs";
-            
-            var message = "Probable dead code, at least one line of the comment ends in ';', '(', '{' or ')'";
-            Console.WriteLine($"{path}: {message}");
-            foreach (SyntaxTrivia trivia in errors)
+            return exitCode;
+        }
+
+        public static int MainWithCode(string[] args)
+        {
+            var rootCommand = new RootCommand(
+                "Examines the C# code for dead code in the comments.")
             {
-                var span = tree.GetLineSpan(trivia.Span);
-                var position = span.StartLinePosition;
-                
-                Console.WriteLine($"  * At line {position.Line} and column {position.Character}");
-            }
+                new Option<string[]>(
+                        new[] {"--inputs", "-i"},
+                        "Glob patterns of the files to be inspected")
+                    { Required=true },
+
+                new Option<string[]>(
+                    new[] {"--excludes", "-e"},
+                    "Glob patterns of the files to be excluded from inspection"),
+
+                new Option<bool>(
+                    new[] {"--remove", "-r"},
+                    "If set, removes the comments suspected to contain dead code"
+                )
+            };
+
+            rootCommand.Handler = System.CommandLine.Invocation.CommandHandler.Create(
+                (string[] inputs, string[] excludes, bool remove) => Handle(inputs, excludes, remove));
+
+            int exitCode = rootCommand.InvokeAsync(args).Result;
+            return exitCode;
+        }
+
+        public static void Main(string[] args)
+        {
+            int exitCode = MainWithCode(args);
+            Environment.ExitCode = exitCode;
         }
     }
 }
