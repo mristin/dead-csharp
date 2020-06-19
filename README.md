@@ -1,7 +1,7 @@
 # dead-csharp
 
 ![check-and-publish](
-https://github.com/mristin/dead-csharp/workflows/check-and-publish/badge.svg
+https://github.com/mristin/dead-csharp/workflows/check/badge.svg
 ) [![Coverage Status](
 https://coveralls.io/repos/github/mristin/dead-csharp/badge.svg)](
 https://coveralls.io/github/mristin/dead-csharp
@@ -87,7 +87,7 @@ You can provide the glob pattern for the files to be excluded with `--excludes`:
 ```bash
 dotnet dead-csharp \
     --inputs "**/*.cs" \
-    --excludes --excludes "**/obj/**"
+    --excludes "**/obj/**"
 ```
 
 If you want to exclude the checks within regions of a source file, you can write
