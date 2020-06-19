@@ -8,11 +8,6 @@ jobs:
     steps:
       - uses: actions/checkout@master
 
-      - name: Extract branch name
-        run: |
-          $SOURCE_BRANCH = ${env:GITHUB_REF} -replace 'refs/heads/', ''
-          echo "::set-env name=SOURCE_BRANCH::$SOURCE_BRANCH"
-
       - name: Check the commit message(s)
         uses: mristin/opinionated-commit-message@v1.0.4
 
