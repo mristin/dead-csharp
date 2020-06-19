@@ -17,6 +17,7 @@ jobs:
         uses: actions/setup-dotnet@v1
         with:
           dotnet-version: '3.1.100'
+          source-url: https://nuget.pkg.github.com/mristin/index.json
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_API_KEY}}
 
@@ -26,4 +27,4 @@ jobs:
 
       - name: Push generated package
         working-directory: src
-        run: dotnet nuget push out/*.nupkg --skip-duplicate --no-symbols true
+        run: dotnet nuget push out/*.nupkg --skip-duplicate --no-symbols true --source https://api.nuget.org/v3/index.json
