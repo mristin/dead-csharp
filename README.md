@@ -1,7 +1,7 @@
 # dead-csharp
 
-![check-and-publish](
-https://github.com/mristin/dead-csharp/workflows/check/badge.svg
+![Check](
+https://github.com/mristin/dead-csharp/workflows/Check/badge.svg
 ) [![Coverage Status](
 https://coveralls.io/repos/github/mristin/dead-csharp/badge.svg)](
 https://coveralls.io/github/mristin/dead-csharp
