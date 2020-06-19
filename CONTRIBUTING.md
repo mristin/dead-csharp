@@ -5,8 +5,10 @@
 We develop using the feature branches, see this section of the Git book:
 https://git-scm.com/book/en/v2/Git-Branching-Branching-Workflows.
 
-Please prefix the branch with your user name
-(*e.g.,* `mristin/Add-some-feature`).
+Please prefix the branch with your user name (*e.g.,* `mristin/Add-some-feature`). 
+If you want to skip the full battery of CI tests, you can add `doc` or `workflow` 
+qualifier in your branch name (*e.g.*, `mristin/doc/Add-references-to-Readme` or
+`mristin/workflow/Fix-nuget-publishing`).
 
 If you have write permissions to the repository,
 create a feature branch directly within the repository.
