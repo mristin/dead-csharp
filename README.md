@@ -27,6 +27,31 @@ to previous code, dead code in comments will mislead tools such as `diff` and
 
 Thus dead code is bad for your code base and should be removed.
 
+### Related Tools
+
+At the time of writing (2020-06-19), there was not a single actively maintained
+tool available to detect dead C# code in comments.
+
+* [StyleCop](https://github.com/StyleCop/StyleCop) provides a couple of related
+  checks which might serve as a heurisic (see [Stylecop's list of rules](
+  https://documentation.help/StyleCop/
+  )). However, the project is not maintained any more (
+  see [this section in Stylecop's readme](
+  https://github.com/StyleCop/StyleCop#considerations)).
+
+* [StyleCopAnalyzers](https://github.com/DotNetAnalyzers/StyleCopAnalyzers) is
+  a follow-up project of StyleCop based on Roslyn. It provides a rich set of 
+  rules (see [their documentation](
+  https://github.com/DotNetAnalyzers/StyleCopAnalyzers/blob/master/DOCUMENTATION.md
+  )), but they provide no the rule to fire on dead code in comments.
+  
+* [Resharper CLI](https://www.jetbrains.com/help/resharper/InspectCode.html
+  ) is a powerful tool for code inspection. While it does provide a heuristic
+  to detect *unreachable* code, this heuristic does not detect code in the
+  comments (see [Resharper's list of relevant code inspections](
+  https://www.jetbrains.com/help/resharper/Reference__Code_Inspections_CSHARP.html#CodeRedundancy
+  )).
+
 ## Installation
 
 Dead-csharp is available as a dotnet tool.
