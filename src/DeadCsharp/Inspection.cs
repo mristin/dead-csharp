@@ -2,9 +2,13 @@ using InvalidOperationException = System.InvalidOperationException;
 using ArgumentException = System.ArgumentException;
 using StringSplitOptions = System.StringSplitOptions;
 using Regex = System.Text.RegularExpressions.Regex;
+using Match = System.Text.RegularExpressions.Match;
 using System.Collections.Generic;
 using System.Linq;
+
 using Microsoft.CodeAnalysis.CSharp;
+
+using SyntaxNode = Microsoft.CodeAnalysis.SyntaxNode;
 using SyntaxTrivia = Microsoft.CodeAnalysis.SyntaxTrivia;
 using SyntaxTree = Microsoft.CodeAnalysis.SyntaxTree;
 using SyntaxKind = Microsoft.CodeAnalysis.CSharp.SyntaxKind;
@@ -83,11 +87,14 @@ namespace DeadCsharp
             return text;
         }
 
-        private static readonly List<Regex> CodeWithBracketRes = new List<Regex>
+        private static readonly List<Regex> CodeRegexes = new List<Regex>
         {
             // common control statements
-            new Regex(@"^\s*(if|else\s+if|for|foreach)\(.*\)\s*$"),
+            new Regex(@"^\s*(if|else\s+if|for|foreach)\s*\(.*\)\s*$"),
 
+            // logic operators
+            new Regex(@".*(\|\||&&).*"),
+            
             // variable or member initialization
             new Regex(@"^\s*([a-zA-Z_0-9]+((\s+|\.)[a-zA-Z_0-9]+)*)" +
                       @"\s" +
@@ -110,9 +117,9 @@ namespace DeadCsharp
 
             List<string>? cues = null;
 
-            if (content.Contains("//"))
+            if (content.Contains(" //"))
             {
-                (cues ??= new List<string>()).Add("contains `//`");
+                (cues ??= new List<string>()).Add("contains ` //`");
             }
 
             if (content.Contains("/*"))
@@ -143,13 +150,17 @@ namespace DeadCsharp
                     continue;
                 }
 
+                if (trimmedLine.StartsWith("//"))
+                {
+                    (cues ??= new List<string>()).Add($"a line starts with `//`");
+                }
 
                 char lastChar = trimmedLine[^1];
                 if (lastChar == ';' || lastChar == '(' || lastChar == '{' || lastChar == '}')
                 {
                     (cues ??= new List<string>()).Add($"a line ends with `{lastChar}`");
                 }
-                else if (lastChar == ')')
+                else
                 {
                     // This is just a heuristic which works well in most cases.
                     //
@@ -158,7 +169,7 @@ namespace DeadCsharp
                     //
                     // A more sophisticated approach based on machine learning would be preferable
                     // once enough data is gathered.
-                    foreach (var regex in CodeWithBracketRes)
+                    foreach (var regex in CodeRegexes)
                     {
                         if (regex.IsMatch(content))
                         {
@@ -274,6 +285,91 @@ namespace DeadCsharp
             }
         }
 
+        private class NodeOrTrivia
+        {
+            public readonly SyntaxNode? Node;
+            public readonly SyntaxTrivia? Trivia;
+            public readonly int SpanStart;
+
+            public bool IsNode() => Node != null;
+            public bool IsEndOfFile() => Trivia == null && Node == null;
+
+            public NodeOrTrivia(SyntaxNode? node, SyntaxTrivia? trivia)
+            {
+                if (node != null && trivia != null)
+                {
+                    throw new ArgumentException("Both node and trivia are given.");
+                }
+
+                Node = node;
+                Trivia = trivia;
+
+                if (node != null)
+                {
+                    SpanStart = node.Span.Start;
+                }
+                else if (trivia != null)
+                {
+                    SpanStart = trivia.Value.Span.Start;
+                }
+                else
+                {
+                    // End of file does not have a span start.
+                    SpanStart = -1;
+                }
+            }
+        }
+
+        private static IEnumerable<NodeOrTrivia> MergeNodesAndTrivias(CompilationUnitSyntax root)
+        {
+            var nodeCursor = root.DescendantNodes().GetEnumerator();
+            var triviaCursor = root.DescendantTrivia().GetEnumerator();
+
+            bool doneWithNodes = !nodeCursor.MoveNext();
+            bool doneWithTrivias = !triviaCursor.MoveNext();
+
+            while (!doneWithNodes || !doneWithTrivias)
+            {
+                if (doneWithNodes && !doneWithTrivias)
+                {
+                    yield return new NodeOrTrivia(null, triviaCursor.Current);
+                    doneWithTrivias = !triviaCursor.MoveNext();
+                }
+                else if (!doneWithNodes && doneWithTrivias)
+                {
+                    yield return new NodeOrTrivia(nodeCursor.Current, null);
+                    doneWithNodes = !nodeCursor.MoveNext();
+                }
+                else
+                {
+                    if (nodeCursor.Current.SpanStart < triviaCursor.Current.SpanStart)
+                    {
+                        yield return new NodeOrTrivia(nodeCursor.Current, null);
+                        doneWithNodes = !nodeCursor.MoveNext();
+                    }
+                    else
+                    {
+                        yield return new NodeOrTrivia(null, triviaCursor.Current);
+                        doneWithTrivias = !triviaCursor.MoveNext();
+                    }
+                }
+            }
+
+            yield return new NodeOrTrivia(null, null);
+        }
+
+        private static readonly List<Regex> RemoveDecisionChain = new List<Regex>
+        {
+            // Rejected comment spans the whole line
+            new Regex(@"^.*(B|N)(S?RS?N)(.)$"),
+            
+            // Rejected comment is either in-between the code or trails the code
+            new Regex(@"^(.*C)(S?RS?)(E|C|N)$"),
+            
+            // Rejected comment is the last thing in the file
+            new Regex(@"^(.*[^S])(S?RS?N?)(E)$")
+        };
+
         /// <summary>
         /// Inspects the syntax tree and remove the comments which seem to be dead code.
         ///
@@ -283,41 +379,109 @@ namespace DeadCsharp
         /// <param name="tree">Parsed syntax tree</param>
         public static string Remove(SyntaxTree tree)
         {
+            // Map syntax nodes to be rejected to their span start for faster indexing 
             HashSet<int> rejects = new HashSet<int>(
                 InspectTrivias(tree).Select((suspectTrivia) => suspectTrivia.Trivia.SpanStart));
 
             var root = (CompilationUnitSyntax)tree.GetRoot();
 
-            // Find trailing new-line trivias in a second pass
-            SyntaxTrivia? prevTrivia = null;
+            // Decide whether to delete prefix or suffix white space (including new line) in a second pass
+            HashSet<int> additionalRejects = new HashSet<int>();
 
-            HashSet<int> whitespaceRejects = new HashSet<int>();
+            // Use symbols to represent last 5 nodes:
+            // '_': null / not observed
+            // 'S': whitespace trivia
+            // 'N': newline trivia
+            // 'C': code
+            // 'R': rejected comment
+            // 'B': beginning of file
+            // 'E': end of file
+            // 'X': none of the above
+            var lastSymbols = "_____B";
 
-            foreach (SyntaxTrivia trivia in root.DescendantTrivia())
+            var lastSpanStarts = new List<int>(6) { -1, -1, -1, -1, -1, -1 };
+
+            foreach (NodeOrTrivia current in MergeNodesAndTrivias(root))
             {
-                if (prevTrivia.HasValue)
-                {
-                    if (rejects.Contains(prevTrivia.Value.SpanStart) &&
-                        trivia.Span.Start == prevTrivia.Value.Span.End)
-                    {
-                        if (trivia.Kind() is SyntaxKind.EndOfLineTrivia)
-                        {
-                            whitespaceRejects.Add(trivia.SpanStart);
-                        }
-                    }
+                // Put on deque
 
-                    if (rejects.Contains(trivia.SpanStart) &&
-                        prevTrivia.Value.Span.End == trivia.Span.Start &&
-                        prevTrivia.Value.Kind() is SyntaxKind.WhitespaceTrivia)
+                char newSymbol = 'X';
+                if (current.IsEndOfFile())
+                {
+                    newSymbol = 'E';
+                }
+                else if (current.IsNode())
+                {
+                    newSymbol = 'C';
+                }
+                else
+                {
+                    switch (current.Trivia.Value.Kind())
                     {
-                        whitespaceRejects.Add(prevTrivia.Value.SpanStart);
+                        case SyntaxKind.WhitespaceTrivia: newSymbol = 'S'; break;
+                        case SyntaxKind.EndOfLineTrivia: newSymbol = 'N'; break;
+                        default:
+                            if (rejects.Contains(current.Trivia.Value.SpanStart))
+                            {
+                                newSymbol = 'R';
+                            }
+                            break;
                     }
                 }
 
-                prevTrivia = trivia;
+                // Shift
+
+                if (lastSymbols.Length != lastSpanStarts.Count)
+                {
+                    throw new InvalidOperationException(
+                        $"Expected lastSymbols.Length (== {lastSymbols.Length}) " +
+                        $"to be equal lastSpanStarts.Count (== {lastSpanStarts.Count}).");
+                }
+                lastSymbols = lastSymbols.Substring(1, lastSymbols.Length - 1) + newSymbol;
+                lastSpanStarts = lastSpanStarts.GetRange(1, lastSpanStarts.Count - 1);
+                lastSpanStarts.Add(current.SpanStart);
+
+                // Determine the action
+
+                Match? match = null;
+                foreach (Regex regex in RemoveDecisionChain)
+                {
+                    match = regex.Match(lastSymbols);
+                    if (match.Success)
+                    {
+                        break;
+                    }
+                }
+
+                // Perform action
+
+                if (match != null && match.Success)
+                {
+                    var targetGroup = match.Groups[2];
+                    if (targetGroup == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Expected group 2 to exist in the match: {match}");
+                    }
+
+                    var end = targetGroup.Index + targetGroup.Length;
+                    for (int i = targetGroup.Index; i < end; i++)
+                    {
+                        var spanStart = lastSpanStarts[i];
+                        if (spanStart < 0)
+                        {
+                            throw new InvalidOperationException(
+                                $"Expected span start to be set at index {i} for matching the range " +
+                                $"[{targetGroup.Index}, {targetGroup.Index + targetGroup.Length}) " +
+                                $"of pattern: {lastSymbols}");
+                        }
+
+                        additionalRejects.Add(spanStart);
+                    }
+                }
             }
 
-            rejects.UnionWith(whitespaceRejects);
+            rejects.UnionWith(additionalRejects);
 
             // Assume the same order of iteration in visitor and InspectTrivias!
             var commentRemover = new CommentRemover(rejects);
