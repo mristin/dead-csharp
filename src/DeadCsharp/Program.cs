@@ -27,8 +27,16 @@ namespace DeadCsharp
                 if (remove)
                 {
                     string newProgramText = Inspection.Remove(tree);
-                    System.IO.File.WriteAllText(path, newProgramText);
-                    Console.WriteLine($"FIXED {path}");
+
+                    if (newProgramText != programText)
+                    {
+                        System.IO.File.WriteAllText(path, newProgramText, System.Text.Encoding.UTF8);
+                        Console.WriteLine($"FIXED {path}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"OK   {path}");
+                    }
                 }
                 else
                 {
