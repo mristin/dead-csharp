@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace DeadCsharp
 {
-    public static class Input
+    internal static class Input
     {
         /// <summary>
         /// Matches all the files defined by the patterns, includes and excludes.

@@ -1,3 +1,4 @@
+using System;
 using InvalidOperationException = System.InvalidOperationException;
 using ArgumentException = System.ArgumentException;
 using StringSplitOptions = System.StringSplitOptions;
@@ -46,7 +47,7 @@ namespace DeadCsharp
             }
         }
 
-        public static bool ShouldSkipTrivia(string triviaAsString)
+        internal static bool ShouldSkipTrivia(string triviaAsString)
         {
             return triviaAsString.StartsWith("///") ||
                    (!triviaAsString.StartsWith("//") && !triviaAsString.StartsWith("/*"));
@@ -111,7 +112,7 @@ namespace DeadCsharp
         /// </summary>
         /// <param name="triviaAsText">Comment's content from the trivia node of the syntax tree</param>
         /// <returns>null if no cues or a list with one or more cues</returns>
-        public static List<string>? InspectComment(string triviaAsText)
+        internal static List<string>? InspectComment(string triviaAsText)
         {
             string content = ExtractContent(triviaAsText);
 
@@ -206,7 +207,7 @@ namespace DeadCsharp
             }
         }
 
-        private static bool TriviaIsComment(string triviaAsString)
+        internal static bool TriviaIsComment(string triviaAsString)
         {
             return triviaAsString.StartsWith("//") || triviaAsString.StartsWith("/*");
         }
@@ -287,12 +288,15 @@ namespace DeadCsharp
 
         private class NodeOrTrivia
         {
-            public readonly SyntaxNode? Node;
+            private readonly SyntaxNode? _node;
             public readonly SyntaxTrivia? Trivia;
             public readonly int SpanStart;
 
-            public bool IsNode() => Node != null;
-            public bool IsEndOfFile() => Trivia == null && Node == null;
+            public bool IsNode() => _node != null;
+
+            public bool IsTrivia() => Trivia != null;
+
+            public bool IsEndOfFile() => Trivia == null && _node == null;
 
             public NodeOrTrivia(SyntaxNode? node, SyntaxTrivia? trivia)
             {
@@ -301,7 +305,7 @@ namespace DeadCsharp
                     throw new ArgumentException("Both node and trivia are given.");
                 }
 
-                Node = node;
+                _node = node;
                 Trivia = trivia;
 
                 if (node != null)
@@ -322,8 +326,8 @@ namespace DeadCsharp
 
         private static IEnumerable<NodeOrTrivia> MergeNodesAndTrivias(CompilationUnitSyntax root)
         {
-            var nodeCursor = root.DescendantNodes().GetEnumerator();
-            var triviaCursor = root.DescendantTrivia().GetEnumerator();
+            using var nodeCursor = root.DescendantNodes().GetEnumerator();
+            using var triviaCursor = root.DescendantTrivia().GetEnumerator();
 
             bool doneWithNodes = !nodeCursor.MoveNext();
             bool doneWithTrivias = !triviaCursor.MoveNext();
@@ -414,8 +418,12 @@ namespace DeadCsharp
                 {
                     newSymbol = 'C';
                 }
-                else
+                else if (current.IsTrivia())
                 {
+                    if (current.Trivia == null)
+                    {
+                        throw new InvalidOperationException("IsTrivia is true, but Trivia is null.");
+                    }
                     switch (current.Trivia.Value.Kind())
                     {
                         case SyntaxKind.WhitespaceTrivia: newSymbol = 'S'; break;
@@ -427,6 +435,10 @@ namespace DeadCsharp
                             }
                             break;
                     }
+                }
+                else
+                {
+                    throw new NotImplementedException("NodeOrTrivia switch logic is missing a case.");
                 }
 
                 // Shift
