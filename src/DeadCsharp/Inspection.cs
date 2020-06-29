@@ -47,7 +47,7 @@ namespace DeadCsharp
             }
         }
 
-        internal static bool ShouldSkipTrivia(string triviaAsString)
+        public static bool ShouldSkipTrivia(string triviaAsString)
         {
             return triviaAsString.StartsWith("///") ||
                    (!triviaAsString.StartsWith("//") && !triviaAsString.StartsWith("/*"));
@@ -115,7 +115,7 @@ namespace DeadCsharp
         /// </summary>
         /// <param name="triviaAsText">Comment's content from the trivia node of the syntax tree</param>
         /// <returns>null if no cues or a list with one or more cues</returns>
-        internal static List<string>? InspectComment(string triviaAsText)
+        public static List<string>? InspectComment(string triviaAsText)
         {
             string content = ExtractContent(triviaAsText);
 
@@ -210,7 +210,7 @@ namespace DeadCsharp
             }
         }
 
-        internal static bool TriviaIsComment(string triviaAsString)
+        private static bool TriviaIsComment(string triviaAsString)
         {
             return triviaAsString.StartsWith("//") || triviaAsString.StartsWith("/*");
         }
