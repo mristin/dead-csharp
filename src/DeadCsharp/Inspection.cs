@@ -104,7 +104,10 @@ namespace DeadCsharp
                       @"new\s*.*\(.*\)$"),
 
             // Wagon function call
-            new Regex(@"^\s*\.([a-zA-Z_0-9]+(\.[a-zA-Z_0-9]+)*)\(.*\)\s*$")
+            new Regex(@"^\s*\.([a-zA-Z_0-9]+(\.[a-zA-Z_0-9]+)*)\(.*\)\s*$"),
+            
+            // Attribute suffix and prefix
+            new Regex( @"^\s*\[")
         };
 
         /// <summary>

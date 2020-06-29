@@ -20,6 +20,7 @@ namespace DeadCsharp.Test
         [TestCase("// if(something) {", new[] { "a line ends with `{`" })]
         [TestCase("// }  ", new[] { "a line ends with `}`" })]
         [TestCase("// doSomething(  ", new[] { "a line ends with `(`" })]
+        [TestCase("// [SomeAttribute()] ", new[] { @"a line matches `^\s*\[`" })]
         public void TestTrivialCases(string triviaAsString, string[]? expected)
         {
             List<string>? actual = Inspection.InspectComment(triviaAsString);
