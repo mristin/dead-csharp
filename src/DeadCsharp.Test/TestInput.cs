@@ -7,14 +7,13 @@ namespace DeadCsharp.Test
 {
     public class InputTests
     {
-        private static string WriteDummyFile(string prefix, string dirName, string subdirName, string name)
+        private static void WriteDummyFile(string prefix, string dirName, string subdirName, string name)
         {
             var parent = Path.Join(prefix, dirName, subdirName);
             System.IO.Directory.CreateDirectory(parent);
 
             var path = Path.Join(parent, name);
             System.IO.File.WriteAllText(path, "some content");
-            return path;
         }
 
         [Test]
@@ -26,8 +25,8 @@ namespace DeadCsharp.Test
 
             List<string> matchedFiles = Input.MatchFiles(
                     tmpdir.Path,
-                    new List<string>() { Path.Join("**", "*.cs") },
-                    new List<string>() { })
+                    new List<string> { Path.Join("**", "*.cs") },
+                    new List<string>())
                 .ToList();
 
             var expectedFiles = new List<string>() { Path.Join("a", "b", "Program.cs") };
@@ -44,8 +43,8 @@ namespace DeadCsharp.Test
 
             List<string> matchedFiles = Input.MatchFiles(
                     tmpdir.Path,
-                    new List<string>() { Path.Join(tmpdir.Path, "**", "*.cs") },
-                    new List<string>() { })
+                    new List<string> { Path.Join(tmpdir.Path, "**", "*.cs") },
+                    new List<string>())
                 .ToList();
 
             var expectedFiles = new List<string>() { Path.Join(tmpdir.Path, "a", "b", "Program.cs") };

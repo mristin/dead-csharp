@@ -1,4 +1,8 @@
+using TextWriter = System.IO.TextWriter;
 using ArgumentException = System.ArgumentException;
+using InvalidOperationException = System.InvalidOperationException;
+using Regex = System.Text.RegularExpressions.Regex;
+
 using System.Collections.Generic;
 
 namespace DeadCsharp
@@ -6,13 +10,22 @@ namespace DeadCsharp
 
     public static class Output
     {
-        /// <summary>
-        /// This class is necessary so that we can pass an output variable by reference to
-        /// <see cref="Report"/>.
-        /// </summary>
-        public class HasSuspect
+        public static string DescribeCharacteristic(Inspection.Characteristic characteristic)
         {
-            public bool Value;
+            switch (characteristic)
+            {
+                case Inspection.Trailing t:
+                    return $"a line ends with `{t.Trail}`";
+                case Inspection.Prefixed p:
+                    return $"a line starts with `{p.Prefix}`";
+                case Inspection.Contains c:
+                    return $"a line contains `{c.Feature}`";
+                case Inspection.Matches m:
+                    return $"a line matches the pattern \"{m.Identifier}\"";
+                default:
+                    throw new InvalidOperationException(
+                        $"Unhandled type of {nameof(characteristic)}: {characteristic.GetType()}");
+            }
         }
 
         /// <summary>
@@ -20,35 +33,59 @@ namespace DeadCsharp
         /// </summary>
         /// <param name="path">Path to the inspected file</param>
         /// <param name="suspects">Suspect comments</param>
-        /// <param name="hasSuspect">Output reference since generators can have no out arguments</param>
-        /// <returns>stream of report lines</returns>
-        public static IEnumerable<string> Report(string path, IEnumerable<Inspection.Suspect> suspects,
-            HasSuspect hasSuspect)
+        /// <param name="writer">Writer that writes the report</param>
+        /// <returns>true if there was at least one suspect comment</returns>
+        public static bool Report(
+            string path, IEnumerable<Inspection.Suspect> suspects, TextWriter writer)
         {
-            hasSuspect.Value = false;
+            bool hasSuspect = false;
+
+            var matchedPatterns = new SortedSet<string>();
 
             foreach (Inspection.Suspect suspect in suspects)
             {
-                if (!hasSuspect.Value)
+                if (!hasSuspect)
                 {
-                    hasSuspect.Value = true;
-                    yield return $"FAIL {path}:";
+                    hasSuspect = true;
+                    writer.WriteLine($"FAIL {path}:");
                 }
 
                 if (suspect.Cues == null)
                 {
                     throw new ArgumentException(
-                        $"Unexpected null cues at the suspect with line index {suspect.Line} " +
+                        $"Unexpected null cues at the suspect comment starting at line index {suspect.Line} " +
                         $"and column index {suspect.Column}");
                 }
 
-                yield return $"  * {suspect.Line + 1}:{suspect.Column + 1}: {string.Join("; ", suspect.Cues)}";
+                writer.WriteLine($"  * Comment starting at {suspect.Line + 1}:{suspect.Column + 1}:");
+                foreach (var cue in suspect.Cues)
+                {
+                    writer.WriteLine(
+                        $"    * Cue at {cue.Line + 1}:{cue.Column + 1}: {DescribeCharacteristic(cue.Characteristic)}");
+
+                    if (cue.Characteristic is Inspection.Matches m)
+                    {
+                        matchedPatterns.Add(m.Identifier);
+                    }
+                }
             }
 
-            if (!hasSuspect.Value)
+            if (matchedPatterns.Count > 0)
             {
-                yield return $"OK   {path}";
+                writer.WriteLine("The matched patterns were:");
+                foreach (var identifier in matchedPatterns)
+                {
+                    Regex regex = Inspection.CodeRegexes[identifier];
+                    writer.WriteLine($"  * \"{identifier}\": {regex}");
+                }
             }
+
+            if (!hasSuspect)
+            {
+                writer.WriteLine($"OK   {path}");
+            }
+
+            return hasSuspect;
         }
     }
 }

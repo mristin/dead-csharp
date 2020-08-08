@@ -1,75 +1,110 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
+
 using CSharpSyntaxTree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree;
+
 using NUnit.Framework;
 
 namespace DeadCsharp.Test
 {
     public class InspectCommentTests
     {
-        [TestCase("// A completely valid comment", null)]
-        [TestCase("/* A completely valid comment */", null)]
-        [TestCase("/* A completely \n\n valid comment */", null)]
-        [TestCase("// if(something) // some comment here", new[] { "contains ` //`" })]
-        [TestCase("// if(something) /* some comment here", new[] { "contains `/*`" })]
-        [TestCase("// } */", new[] { "contains `*/`" })]
-        [TestCase("/* Not good \n// some comment here\n*/", new[] { "a line starts with `//`" })]
-        [TestCase("/* Not good \n/* some comment here\n*/", new[] { "contains `/*`" })]
-        [TestCase("/* Not good \nsome comment here*/\n*/", new[] { "contains `*/`" })]
-        [TestCase("// if(something) {", new[] { "a line ends with `{`" })]
-        [TestCase("// }  ", new[] { "a line ends with `}`" })]
-        [TestCase("// doSomething(  ", new[] { "a line ends with `(`" })]
-        [TestCase("// [SomeAttribute()] ", new[] { @"a line matches `^\s*\[`" })]
-        public void TestTrivialCases(string triviaAsString, string[]? expected)
-        {
-            List<string>? actual = Inspection.InspectComment(triviaAsString);
-
-            if (expected == null)
-            {
-                Assert.IsNull(actual);
-            }
-            else
-            {
-                Assert.That(actual, Is.EquivalentTo(expected));
-            }
-        }
-
         [Test]
-        public void TestInspectCommentOnComplexMultilineComment()
+        public void TestCases()
         {
-            string triviaAsString = "/* Not good \n" +
-                                    "/*\n" +
-                                    "SoDead();\n" +
-                                    "*/" +
-                                    "This is wrong */";
-            var expected = new[] { "contains `/*`", "contains `*/`", "a line ends with `;`" };
+            var testCases = new List<(string, List<(string, int, int)>?, string)>
+            {
+                ("// A completely valid comment", null, "single-line valid comment"),
+                ("// Precondition(s)", null, "single-line valid comment with parentheses"),
+                ("/* A completely valid comment */", null, "single-line valid block comment"),
+                ("/* A completely \n\n valid comment */", null, "multi-line valid comment"),
+                ("// var x; // do something",
+                    new List<(string, int, int)>{("a line contains `//`", 100, 210)},
+                    "dead code with trailing single-line comment"),
+                ("// var x; /* do something",
+                    new List<(string, int, int)>
+                    {
+                        ("a line contains `/*`", 100, 210),
+                    },
+                    "dead code with opening block comment"),
+                ("// } */",
+                    new List<(string, int, int)> { ("a line contains `*/`", 100, 205) },
+                    "dead code with closing block comment"),
+                ("/*\n" +
+                 "// do something\n" +
+                 "*/",
+                    new List<(string, int, int)> { ("a line contains `//`", 101, 0) },
+                    "Single-line comment in a block comment"),
+                ("// b &&",
+                    new List<(string, int, int)> { ("a line contains `&&`", 100, 205) },
+                    "Single-line comment with AND operator"),
+                ("// b ||",
+                    new List<(string, int, int)> { ("a line contains `||`", 100, 205) },
+                    "Single-line comment with OR operator"),
+                ("// [SomeAttribute",
+                    new List<(string, int, int)> { ("a line starts with `[`", 100, 203) },
+                    "Single-line comment with opening bracket"),
+                ("// doSomething();",
+                    new List<(string, int, int)> { ("a line ends with `;`", 100, 216) },
+                    "Single-line comment with trailing semi-colon"),
+                ("// doSomething(",
+                    new List<(string, int, int)> { ("a line ends with `(`", 100, 214) },
+                    "Single-line comment with trailing opening parenthesis"),
+                ("// {",
+                    new List<(string, int, int)> { ("a line ends with `{`", 100, 203) },
+                    "Single-line comment with trailing opening curly brace"),
+                ("// }",
+                    new List<(string, int, int)> { ("a line ends with `}`", 100, 203) },
+                    "Single-line comment with trailing closing curly brace"),
+                ("// var x =",
+                    new List<(string, int, int)> { ("a line ends with `=`", 100, 209) },
+                    "Single-line comment with trailing equal sign"),
+                ("// if (smc != null)",
+                    new List<(string, int, int)>
+                    {
+                        (@"a line matches the pattern ""control statement""",
+                            100, 203)
+                    },
+                    "Single-line comment with a control statement"),
+                ("// var x = new A()",
+                    new List<(string, int, int)>
+                    {
+                        (@"a line matches the pattern ""variable or member initialization""",
+                            100, 203)
+                    },
+                    "Single-line comment with a variable initialization"),
+                ("// private static readonly A x = new A()",
+                    new List<(string, int, int)>
+                    {
+                        (@"a line matches the pattern ""variable or member initialization""",
+                            100, 203)
+                    },
+                    "Single-line comment with a member initialization"),
+                ("// .trainWrack().otherCall(3)",
+                    new List<(string, int, int)>
+                    {
+                        (@"a line matches the pattern ""wagon function call""",
+                            100, 203)
+                    },
+                    "Single-line comment with a wagon function call"),
+            };
 
-            List<string>? actual = Inspection.InspectComment(triviaAsString);
+            foreach (var (triviaAsString, expectedCharacteristicsLinesColumns, label) in testCases)
+            {
+                int lineOffset = 100;
+                int columnOffset = 200;
+                List<Inspection.Cue>? got = Inspection.InspectComment(lineOffset, columnOffset, triviaAsString);
 
-            Assert.IsNotNull(actual);
-            Assert.That(actual, Is.EquivalentTo(expected));
-        }
+                var gotCharacteristicsLinesColumns =
+                    got?
+                        .Select(c => (Output.DescribeCharacteristic(c.Characteristic), c.Line, c.Column))
+                        .ToList();
 
-        [TestCase("// for(var i = 0; i < 10; i++)", true)]
-        [TestCase("// foreach(var x of someList)", true)]
-        [TestCase("// if(dead)", true)]
-        [TestCase("//if (smc != null)", true)]
-        [TestCase("//    foreach (var sme in smc.value)", true)]
-        [TestCase("//foreach (var k in Keys)", true)]
-        [TestCase("// && something == somethingElse()", true)]
-        [TestCase("// || something == somethingElse()", true)]
-        [TestCase("//    && this.keys[i].local == other.keys[i].local", true)]
-        [TestCase("// .trainWrack().otherCall(3)", true)]
-        [TestCase("// var x = new A()", true)]
-        [TestCase("// IA x = new A()", true)]
-        [TestCase("// private static readonly A x = new A()", true)]
-        [TestCase("// this should not (fire)", false)]
-        [TestCase("// Precondition(s)", false)]
-        public void TestSuffixBracket(string triviaAsString, bool shouldFire)
-        {
-            List<string>? actual = Inspection.InspectComment(triviaAsString);
-            Assert.AreEqual(shouldFire, actual != null);
+                Assert.That(
+                    gotCharacteristicsLinesColumns,
+                    Is.EqualTo(expectedCharacteristicsLinesColumns),
+                    label);
+            }
         }
     }
 
@@ -102,7 +137,9 @@ namespace HelloWorld
     {
         static void Main(string[] args)
         {
-            // if(dead)
+            /*
+             if(dead)
+            */
             System.Console.WriteLine(""Hello, World!"");
         }
     }
@@ -115,11 +152,20 @@ namespace HelloWorld
 
             var onlySuspect = suspects[0];
 
-            Assert.AreEqual(12, onlySuspect.Column);
             Assert.AreEqual(7, onlySuspect.Line);
+            Assert.AreEqual(12, onlySuspect.Column);
             Assert.IsNotNull(onlySuspect.Cues);
-            Assert.That(onlySuspect.Cues, Is.EquivalentTo(
-                new List<string> { @"a line matches `^\s*(if|else\s+if|for|foreach)\s*\(.*\)\s*$`" }));
+
+            var characteristicsLinesColumns =
+                onlySuspect.Cues
+                    .Select(c => (Output.DescribeCharacteristic(c.Characteristic), c.Line, c.Column))
+                    .ToList();
+
+            Assert.That(characteristicsLinesColumns, Is.EquivalentTo(
+                new List<(string, int, int)>
+                {
+                    (@"a line matches the pattern ""control statement""", 8, 13)
+                }));
         }
 
         [Test]
@@ -142,7 +188,6 @@ namespace HelloWorld
         }
     }
 }";
-
             var tree = CSharpSyntaxTree.ParseText(programText);
             List<Inspection.Suspect> suspects = Inspection.Inspect(tree).ToList();
 
@@ -153,8 +198,15 @@ namespace HelloWorld
             Assert.AreEqual(12, onlySuspect.Column);
             Assert.AreEqual(11, onlySuspect.Line);
             Assert.IsNotNull(onlySuspect.Cues);
-            Assert.That(onlySuspect.Cues, Is.EquivalentTo(
-                new List<string>() { "a line ends with `;`" }));
+
+            var characteristicsLinesColumns =
+                onlySuspect.Cues
+                    .Select(c => (Output.DescribeCharacteristic(c.Characteristic), c.Line, c.Column))
+                    .ToList();
+
+            Assert.That(characteristicsLinesColumns,
+                Is.EquivalentTo(
+                new List<(string, int, int)> { ("a line ends with `;`", 11, 35) }));
         }
     }
 
