@@ -288,13 +288,26 @@ namespace DeadCsharp
 
 
                 char lastChar = line[last];
-                if (lastChar == ';' || lastChar == '(' || lastChar == '{' || lastChar == '}' || lastChar == '=')
+                if (lastChar == ';' || lastChar == '(' || lastChar == '{' || lastChar == '}')
                 {
                     (cues ??= new List<Cue>()).Add(
                         new Cue(
                             new Trailing(lastChar.ToString()),
                             lineIndex + lineOffset,
                             last + columnOffset));
+                }
+
+                if (last >= 1)
+                {
+                    string lastTwoChars = line.Substring(last - 1, 2);
+                    if (lastTwoChars[0] != '=' && lastTwoChars[1] == '=')
+                    {
+                        (cues ??= new List<Cue>()).Add(
+                            new Cue(
+                                new Trailing("[^=]="),
+                                lineIndex + lineOffset,
+                                last + columnOffset));
+                    }
                 }
 
                 foreach (var (identifier, regex) in CodeRegexes)

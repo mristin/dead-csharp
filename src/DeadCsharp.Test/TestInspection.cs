@@ -20,6 +20,12 @@ namespace DeadCsharp.Test
                 ("/* A completely \n\n valid comment */", null, "multi-line valid comment"),
                 ("// http://some-domain.com", null, "a valid single-line comment with URL"),
                 ("/* http://some-domain.com */", null, "a valid block comment with URL"),
+                ("/* ==========\n" +
+                 "A completely \n" +
+                 "valid comment\n" +
+                 "============= */",
+                    null,
+                    "multi-line valid comment with lines consisting of '='"),
                 ("// var x; // do something",
                     new List<(string, int, int)>{("a line contains ` //`", 100, 209)},
                     "dead code with trailing single-line comment"),
@@ -59,7 +65,7 @@ namespace DeadCsharp.Test
                     new List<(string, int, int)> { ("a line ends with `}`", 100, 203) },
                     "Single-line comment with trailing closing curly brace"),
                 ("// var x =",
-                    new List<(string, int, int)> { ("a line ends with `=`", 100, 209) },
+                    new List<(string, int, int)> { ("a line ends with `[^=]=`", 100, 209) },
                     "Single-line comment with trailing equal sign"),
                 ("// if (smc != null)",
                     new List<(string, int, int)>
