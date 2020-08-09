@@ -18,8 +18,10 @@ namespace DeadCsharp.Test
                 ("// Precondition(s)", null, "single-line valid comment with parentheses"),
                 ("/* A completely valid comment */", null, "single-line valid block comment"),
                 ("/* A completely \n\n valid comment */", null, "multi-line valid comment"),
+                ("// http://some-domain.com", null, "a valid single-line comment with URL"),
+                ("/* http://some-domain.com */", null, "a valid block comment with URL"),
                 ("// var x; // do something",
-                    new List<(string, int, int)>{("a line contains `//`", 100, 210)},
+                    new List<(string, int, int)>{("a line contains ` //`", 100, 209)},
                     "dead code with trailing single-line comment"),
                 ("// var x; /* do something",
                     new List<(string, int, int)>
@@ -33,7 +35,7 @@ namespace DeadCsharp.Test
                 ("/*\n" +
                  "// do something\n" +
                  "*/",
-                    new List<(string, int, int)> { ("a line contains `//`", 101, 0) },
+                    new List<(string, int, int)> { ("a line starts with `//`", 101, 0) },
                     "Single-line comment in a block comment"),
                 ("// b &&",
                     new List<(string, int, int)> { ("a line contains `&&`", 100, 205) },
