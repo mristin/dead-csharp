@@ -1,5 +1,7 @@
+using StringWriter = System.IO.StringWriter;
+
 using System.Collections.Generic;
-using Microsoft.VisualStudio.TestPlatform.Utilities;
+
 using NUnit.Framework;
 
 namespace DeadCsharp.Test
@@ -11,15 +13,13 @@ namespace DeadCsharp.Test
         {
             string path = "/some/Program.cs";
 
-            var hasSuspect = new Output.HasSuspect();
-            string nl = System.Environment.NewLine;
-            string actual = string.Join(nl, Output.Report(
-                path,
-                new List<Inspection.Suspect>(),
-                hasSuspect));
+            using var writer = new StringWriter();
+            bool hasSuspect = Output.Report(path, new List<Inspection.Suspect>(), writer);
 
-            Assert.That(!hasSuspect.Value);
-            Assert.AreEqual($"OK   /some/Program.cs", actual);
+            string nl = System.Environment.NewLine;
+
+            Assert.IsFalse(hasSuspect);
+            Assert.AreEqual($"OK   /some/Program.cs{nl}", writer.ToString());
         }
 
         [Test]
@@ -28,15 +28,24 @@ namespace DeadCsharp.Test
             string path = "/some/Program.cs";
             var suspects = new List<Inspection.Suspect>
             {
-                new Inspection.Suspect(2, 1, new List<string>() {"some cue"})
+                new Inspection.Suspect(
+                    2, 1,
+                    new List<Inspection.Cue>
+                    {
+                        new Inspection.Cue(new Inspection.Contains( "something"), 3, 4)
+                    })
             };
 
-            var hasSuspect = new Output.HasSuspect();
             string nl = System.Environment.NewLine;
-            string actual = string.Join(nl, Output.Report(path, suspects, hasSuspect));
+            using var writer = new StringWriter();
+            bool hasSuspect = Output.Report(path, suspects, writer);
 
-            Assert.That(hasSuspect.Value);
-            Assert.AreEqual($"FAIL /some/Program.cs:{nl}  * 3:2: some cue", actual);
+            Assert.IsTrue(hasSuspect);
+            Assert.AreEqual(
+                $"FAIL /some/Program.cs:{nl}" +
+                $"  * Comment starting at 3:2:{nl}" +
+                $"    * Cue at 4:5: a line contains `something`{nl}",
+                writer.ToString());
         }
 
         [Test]
@@ -46,15 +55,28 @@ namespace DeadCsharp.Test
             var suspects = new List<Inspection.Suspect>
             {
                 new Inspection.Suspect(
-                    2, 1, new List<string>() {"some cue", "another cue"})
+                    2, 1,
+                    new List<Inspection.Cue>
+                    {
+                        new Inspection.Cue(
+                            new Inspection.Contains("some feature"), 3, 4),
+                        new Inspection.Cue(
+                            new Inspection.Contains("another feature"), 5, 6)
+                    })
             };
 
-            var hasSuspect = new Output.HasSuspect();
             string nl = System.Environment.NewLine;
-            string actual = string.Join(nl, Output.Report(path, suspects, hasSuspect));
 
-            Assert.That(hasSuspect.Value);
-            Assert.AreEqual($"FAIL /some/Program.cs:{nl}  * 3:2: some cue; another cue", actual);
+            using var writer = new StringWriter();
+            bool hasSuspect = Output.Report(path, suspects, writer);
+
+            Assert.IsTrue(hasSuspect);
+            Assert.AreEqual(
+                $"FAIL /some/Program.cs:{nl}" +
+                $"  * Comment starting at 3:2:{nl}" +
+                $"    * Cue at 4:5: a line contains `some feature`{nl}" +
+                $"    * Cue at 6:7: a line contains `another feature`{nl}",
+                writer.ToString());
         }
 
         [Test]
@@ -63,16 +85,35 @@ namespace DeadCsharp.Test
             string path = "/some/Program.cs";
             var suspects = new List<Inspection.Suspect>()
             {
-                new Inspection.Suspect(2, 1, new List<string>() {"some cue"}),
-                new Inspection.Suspect(4, 3, new List<string>() {"another cue"})
+                new Inspection.Suspect(
+                    2, 1,
+                    new List<Inspection.Cue>
+                    {
+                        new Inspection.Cue(
+                            new Inspection.Contains("some feature"), 3, 4)
+                    }),
+                new Inspection.Suspect(
+                    12, 1,
+                    new List<Inspection.Cue>
+                    {
+                        new Inspection.Cue(
+                            new Inspection.Contains("another feature"), 13, 14)
+                    })
             };
 
-            var hasSuspect = new Output.HasSuspect();
             string nl = System.Environment.NewLine;
-            string actual = string.Join(nl, Output.Report(path, suspects, hasSuspect));
 
-            Assert.That(hasSuspect.Value);
-            Assert.AreEqual($"FAIL /some/Program.cs:{nl}  * 3:2: some cue{nl}  * 5:4: another cue", actual);
+            using var writer = new StringWriter();
+            bool hasSuspect = Output.Report(path, suspects, writer);
+
+            Assert.IsTrue(hasSuspect);
+            Assert.AreEqual(
+                $"FAIL /some/Program.cs:{nl}" +
+                $"  * Comment starting at 3:2:{nl}" +
+                $"    * Cue at 4:5: a line contains `some feature`{nl}" +
+                $"  * Comment starting at 13:2:{nl}" +
+                $"    * Cue at 14:15: a line contains `another feature`{nl}",
+                writer.ToString());
         }
     }
 }

@@ -1,13 +1,13 @@
-using System;
 using InvalidOperationException = System.InvalidOperationException;
 using ArgumentException = System.ArgumentException;
 using StringSplitOptions = System.StringSplitOptions;
 using Regex = System.Text.RegularExpressions.Regex;
 using Match = System.Text.RegularExpressions.Match;
+
 using System.Collections.Generic;
 using System.Linq;
 
-using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp;  // This is needed for extensions.
 
 using SyntaxNode = Microsoft.CodeAnalysis.SyntaxNode;
 using SyntaxTrivia = Microsoft.CodeAnalysis.SyntaxTrivia;
@@ -21,12 +21,77 @@ namespace DeadCsharp
 {
     public static class Inspection
     {
+        public abstract class Characteristic { }
+
+        public class Trailing : Characteristic
+        {
+            public readonly string Trail;
+
+            public Trailing(string trail)
+            {
+                Trail = trail;
+            }
+        }
+
+        public class Prefixed : Characteristic
+        {
+            public readonly string Prefix;
+
+            public Prefixed(string prefix)
+            {
+                Prefix = prefix;
+            }
+        }
+
+        public class Contains : Characteristic
+        {
+            public readonly string Feature;
+
+            public Contains(string feature)
+            {
+                Feature = feature;
+            }
+        }
+
+        public class Matches : Characteristic
+        {
+            public readonly string Identifier;
+
+            public Matches(string identifier)
+            {
+                Identifier = identifier;
+            }
+        }
+
+        public class Cue
+        {
+            public readonly Characteristic Characteristic;
+            public readonly int Line;  // starts at 0
+            public readonly int Column;  // starts at 0
+
+            public Cue(Characteristic characteristic, int line, int column)
+            {
+                if (line < 0)
+                {
+                    throw new ArgumentException($"Unexpected negative line: {line}");
+                }
+
+                if (column < 0)
+                {
+                    throw new ArgumentException($"Unexpected negative column: {column}");
+                }
+
+                Characteristic = characteristic;
+                Line = line;
+                Column = column;
+            }
+        }
         private class SuspectTrivia
         {
             public readonly SyntaxTrivia Trivia;
-            public readonly List<string> Cues;
+            public readonly List<Cue> Cues;
 
-            public SuspectTrivia(SyntaxTrivia trivia, List<string> cues)
+            public SuspectTrivia(SyntaxTrivia trivia, List<Cue> cues)
             {
                 Trivia = trivia;
                 Cues = cues;
@@ -35,12 +100,22 @@ namespace DeadCsharp
 
         public class Suspect
         {
-            public readonly int Line; // indexed from 0
-            public readonly int Column; // indexed from 0
-            public readonly List<string> Cues;
+            public readonly int Line; // starts at 0
+            public readonly int Column; // starts at 0
+            public readonly List<Cue> Cues;
 
-            public Suspect(int line, int column, List<string> cues)
+            public Suspect(int line, int column, List<Cue> cues)
             {
+                if (line < 0)
+                {
+                    throw new ArgumentException($"Unexpected negative line: {line}");
+                }
+
+                if (column < 0)
+                {
+                    throw new ArgumentException($"Unexpected negative column: {column}");
+                }
+
                 Line = line;
                 Column = column;
                 Cues = cues;
@@ -59,7 +134,7 @@ namespace DeadCsharp
         /// <param name="triviaAsString">Comment as string (including prefix/suffix)</param>
         /// <returns>Text of the content without the prefix/suffix</returns>
         /// <exception cref="ArgumentException">on invalid input string</exception>
-        private static string ExtractContent(string triviaAsString)
+        private static string WithoutCommentTokens(string triviaAsString)
         {
             string text;
             if (triviaAsString.StartsWith("//"))
@@ -88,98 +163,149 @@ namespace DeadCsharp
             return text;
         }
 
-        private static readonly List<Regex> CodeRegexes = new List<Regex>
+        private static readonly List<string> FeatureSubstrings = new List<string>
         {
-            // common control statements
-            new Regex(@"^\s*(if|else\s+if|for|foreach)\s*\(.*\)\s*$"),
+            "//", "/*", "*/", "||", "&&"
+        };
 
-            // logic operators
-            new Regex(@".*(\|\||&&).*"),
-            
-            // variable or member initialization
-            new Regex(@"^\s*([a-zA-Z_0-9]+((\s+|\.)[a-zA-Z_0-9]+)*)" +
-                      @"\s" +
-                      @"*([a-zA-Z_0-9]+(\.[a-zA-Z_0-9]+)*)" +
+        private static readonly Regex AllWhitespaceRegex = new Regex(@"^[ \t]*$");
+
+        public static readonly SortedDictionary<string, Regex> CodeRegexes =
+            new SortedDictionary<string, Regex>
+        {
+            {"control statement", new Regex(@"^\s*(if|else\s+if|for|foreach|switch|while)\s*\(.*\)\s*$")},
+
+            {"variable or member initialization",
+                new Regex(@"^\s*([a-zA-Z_0-9]+((\s+|\.)[a-zA-Z_0-9]+)*)" +
+                      @"\s*" +
+                      @"([a-zA-Z_0-9]+(\.[a-zA-Z_0-9]+)*)" +
                       @"\s*=\s*" +
-                      @"new\s*.*\(.*\)$"),
+                      @"new\s*.*\(.*\)$")},
 
-            // Wagon function call
-            new Regex(@"^\s*\.([a-zA-Z_0-9]+(\.[a-zA-Z_0-9]+)*)\(.*\)\s*$"),
-            
-            // Attribute suffix and prefix
-            new Regex( @"^\s*\[")
+            {"wagon function call",
+                new Regex(@"^\s*(\.)([a-zA-Z_0-9]+(\.[a-zA-Z_0-9]+)*)\(.*\)\s*$")}
         };
 
         /// <summary>
         /// Inspects the given comment and reports any cues suggesting it might contain dead code.
         /// </summary>
+        /// <param name="lineOffset">Starting line of the comment</param>
+        /// <param name="columnOffset">Starting column of the comment</param>
         /// <param name="triviaAsText">Comment's content from the trivia node of the syntax tree</param>
         /// <returns>null if no cues or a list with one or more cues</returns>
-        public static List<string>? InspectComment(string triviaAsText)
+        public static List<Cue>? InspectComment(int lineOffset, int columnOffset, string triviaAsText)
         {
-            string content = ExtractContent(triviaAsText);
+            string content = WithoutCommentTokens(triviaAsText);
 
-            List<string>? cues = null;
-
-            if (content.Contains(" //"))
-            {
-                (cues ??= new List<string>()).Add("contains ` //`");
-            }
-
-            if (content.Contains("/*"))
-            {
-                (cues ??= new List<string>()).Add("contains `/*`");
-            }
-
-            if (content.Contains("*/"))
-            {
-                (cues ??= new List<string>()).Add("contains `*/`");
-            }
+            List<Cue>? cues = null;
 
             string[] lines = content.Split(
                 new[] { "\r\n", "\r", "\n" },
-                StringSplitOptions.None
-            );
-            if (triviaAsText.StartsWith("//") && lines.Length > 1)
-            {
-                throw new ArgumentException(
-                    $"Unexpected comment starting with `//` and containing multiple lines: {triviaAsText}");
-            }
+                StringSplitOptions.None);
 
-            foreach (string line in lines)
+            for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
             {
-                string trimmedLine = line.TrimEnd();
-                if (trimmedLine.Length == 0)
+                // We need to consider for the column offset only in the very first line (as parser gives us offset
+                // only at the first line). Additionally, we need to account for the opening token (`//` or `/*`).
+                columnOffset = (lineIndex == 0) ? columnOffset + 2 : 0;
+
+                string line = lines[lineIndex];
+
+                if (line.Length == 0 || AllWhitespaceRegex.IsMatch(line))
                 {
                     continue;
                 }
 
-                if (trimmedLine.StartsWith("//"))
+                // This is just a heuristic which works well in most cases.
+                //
+                // The alternative approach where the comment content is parsed did not actually
+                // work since syntax parsing accepts most of the human language as well.
+                //
+                // A more sophisticated approach based on machine learning would be preferable
+                // once enough data is gathered.
+
+                foreach (string feature in FeatureSubstrings)
                 {
-                    (cues ??= new List<string>()).Add($"a line starts with `//`");
+                    int column = line.IndexOf(feature, System.StringComparison.InvariantCulture);
+                    if (column >= 0)
+                    {
+                        (cues ??= new List<Cue>()).Add(
+                            new Cue(
+                                new Contains(feature),
+                                lineIndex + lineOffset,
+                                column + columnOffset));
+                    }
                 }
 
-                char lastChar = trimmedLine[^1];
-                if (lastChar == ';' || lastChar == '(' || lastChar == '{' || lastChar == '}')
+                // Start and end of the substring in the line excluding
+                // the whitespace margin and the whitespace trail
+                int first = -1;
+                int last = -1;
+                for (int i = 0; i < line.Length; i++)
                 {
-                    (cues ??= new List<string>()).Add($"a line ends with `{lastChar}`");
-                }
-                else
-                {
-                    // This is just a heuristic which works well in most cases.
-                    //
-                    // The alternative approach where the comment content is parsed did not actually
-                    // work since syntax parsing accepts most of the human language as well.
-                    //
-                    // A more sophisticated approach based on machine learning would be preferable
-                    // once enough data is gathered.
-                    foreach (var regex in CodeRegexes)
+                    if (line[i] != ' ' && line[i] != '\t' && line[i] != '\r')
                     {
-                        if (regex.IsMatch(content))
+                        first = i;
+                        break;
+                    }
+                }
+
+                for (int i = line.Length - 1; i >= 0; i--)
+                {
+                    if (line[i] != ' ' && line[i] != '\t' && line[i] != '\r')
+                    {
+                        last = i;
+                        break;
+                    }
+                }
+
+                if (first == -1 || last == -1 || first > last)
+                {
+                    throw new InvalidOperationException(
+                        "Line is not all whitespace or empty, " +
+                        $"but {nameof(first)} was {first} and {nameof(last)} was {last}." +
+                        $"The line was: <<start>>{line}<<end>>");
+                }
+
+                char firstChar = line[first];
+                if (firstChar == '[')
+                {
+                    (cues ??= new List<Cue>()).Add(
+                        new Cue(
+                            new Prefixed(firstChar.ToString()),
+                            lineIndex + lineOffset,
+                            first + columnOffset));
+                }
+
+                char lastChar = line[last];
+                if (lastChar == ';' || lastChar == '(' || lastChar == '{' || lastChar == '}' || lastChar == '=')
+                {
+                    (cues ??= new List<Cue>()).Add(
+                        new Cue(
+                            new Trailing(lastChar.ToString()),
+                            lineIndex + lineOffset,
+                            last + columnOffset));
+                }
+
+                foreach (var (identifier, regex) in CodeRegexes)
+                {
+                    var codeMatch = regex.Match(line);
+                    if (codeMatch.Success)
+                    {
+                        if (codeMatch.Groups.Count == 0)
                         {
-                            (cues ??= new List<string>()).Add($"a line matches `{regex}`");
-                            break;
+                            throw new InvalidOperationException(
+                                "Expected the match to contain at least one group, " +
+                                "but the match contained none. " +
+                                $"The regex {identifier} was: {regex}, " +
+                                $"the line was: <<start>>{line}<<end>>");
                         }
+
+                        (cues ??= new List<Cue>()).Add(
+                            new Cue(
+                                new Matches(identifier),
+                                lineIndex + lineOffset,
+                                codeMatch.Groups[1].Index + columnOffset));
                     }
                 }
             }
@@ -240,7 +366,10 @@ namespace DeadCsharp
 
             foreach (var (trivia, triviaAsString) in relevantTrivias)
             {
-                List<string>? cues = InspectComment(triviaAsString);
+                var span = tree.GetLineSpan(trivia.Span);
+                var position = span.StartLinePosition;
+
+                List<Cue>? cues = InspectComment(position.Line, position.Character, triviaAsString);
 
                 if (cues != null)
                 {
@@ -388,14 +517,14 @@ namespace DeadCsharp
         {
             // Map syntax nodes to be rejected to their span start for faster indexing 
             HashSet<int> rejects = new HashSet<int>(
-                InspectTrivias(tree).Select((suspectTrivia) => suspectTrivia.Trivia.SpanStart));
+                InspectTrivias(tree).Select(suspectTrivia => suspectTrivia.Trivia.SpanStart));
 
             var root = (CompilationUnitSyntax)tree.GetRoot();
 
             // Decide whether to delete prefix or suffix white space (including new line) in a second pass
             HashSet<int> additionalRejects = new HashSet<int>();
 
-            // Use symbols to represent last 5 nodes:
+            // Use symbols to represent the last couple of nodes:
             // '_': null / not observed
             // 'S': whitespace trivia
             // 'N': newline trivia
@@ -441,7 +570,7 @@ namespace DeadCsharp
                 }
                 else
                 {
-                    throw new NotImplementedException("NodeOrTrivia switch logic is missing a case.");
+                    throw new InvalidOperationException("NodeOrTrivia switch logic is missing a case.");
                 }
 
                 // Shift

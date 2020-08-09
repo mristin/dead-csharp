@@ -81,7 +81,46 @@ namespace HelloWorld
 
             Assert.AreEqual(1, exitCode);
             Assert.AreEqual(
-                $"FAIL {path}:{nl}  * 8:13: a line ends with `;`{nl}",
+                $"FAIL {path}:{nl}" +
+                $"  * Comment starting at 8:13:{nl}" +
+                $"    * Cue at 8:24: a line ends with `;`{nl}",
+                consoleCapture.Output());
+        }
+
+        [Test]
+        public void TestMatchedPatternsReported()
+        {
+            using var tmpdir = new TemporaryDirectory();
+
+            string path = System.IO.Path.Join(tmpdir.Path, "SomeProgram.cs");
+            const string programText =
+                @"
+namespace HelloWorld
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // if(isDead)
+            System.Console.WriteLine(""Hello, World!"");
+        }
+    }
+}";
+            using var consoleCapture = new ConsoleCapture();
+
+            System.IO.File.WriteAllText(path, programText);
+
+            int exitCode = Program.MainWithCode(new[] { "--inputs", path });
+
+            string nl = Environment.NewLine;
+
+            Assert.AreEqual(1, exitCode);
+            Assert.AreEqual(
+                $"FAIL {path}:{nl}" +
+                $"  * Comment starting at 8:13:{nl}" +
+                $"    * Cue at 8:16: a line matches the pattern \"control statement\"{nl}" +
+                $"The matched patterns were:{nl}" +
+                $@"  * ""control statement"": ^\s*(if|else\s+if|for|foreach|switch|while)\s*\(.*\)\s*${nl}",
                 consoleCapture.Output());
         }
 
@@ -117,8 +156,12 @@ namespace HelloWorld
 
             Assert.AreEqual(1, exitCode);
             Assert.AreEqual(
-                $"FAIL {path2}:{nl}  * 8:13: a line ends with `;`{nl}" +
-                $"FAIL {path1}:{nl}  * 8:13: a line ends with `;`{nl}",
+                $"FAIL {path2}:{nl}" +
+                $"  * Comment starting at 8:13:{nl}" +
+                $"    * Cue at 8:24: a line ends with `;`{nl}" +
+                $"FAIL {path1}:{nl}" +
+                $"  * Comment starting at 8:13:{nl}" +
+                $"    * Cue at 8:24: a line ends with `;`{nl}",
                 consoleCapture.Output());
         }
 
@@ -159,7 +202,9 @@ namespace HelloWorld
 
             Assert.AreEqual(1, exitCode);
             Assert.AreEqual(
-                $"FAIL {includedPath}:{nl}  * 8:13: a line ends with `;`{nl}",
+                $"FAIL {includedPath}:{nl}" +
+                $"  * Comment starting at 8:13:{nl}" +
+                $"    * Cue at 8:24: a line ends with `;`{nl}",
                 consoleCapture.Output());
         }
 
