@@ -40,11 +40,11 @@ tool available to detect dead C# code in comments.
   https://github.com/StyleCop/StyleCop#considerations)).
 
 * [StyleCopAnalyzers](https://github.com/DotNetAnalyzers/StyleCopAnalyzers) is
-  a follow-up project of StyleCop based on Roslyn. It provides a rich set of 
+  a follow-up project of StyleCop based on Roslyn. It provides a rich set of
   rules (see [their documentation](
   https://github.com/DotNetAnalyzers/StyleCopAnalyzers/blob/master/DOCUMENTATION.md
   )), but they provide no the rule to fire on dead code in comments.
-  
+
 * [Resharper CLI](https://www.jetbrains.com/help/resharper/InspectCode.html
   ) is a powerful tool for code inspection. While it does provide a heuristic
   to detect *unreachable* code, this heuristic does not detect code in the
@@ -138,7 +138,7 @@ special comments `// dead-csharp on` and `// dead-csharp off`:
 // ...
 
     // dead-csharp off
-    if(something) 
+    if(something)
     {
         // deadCode();
     }
@@ -147,14 +147,27 @@ special comments `// dead-csharp on` and `// dead-csharp off`:
 // ...
 ```
 
-If you want to disable the checks for the whole file, simply write 
-`// dead-csharp off` at the begining:
+If you want to disable the checks for the whole file, simply write
+`// dead-csharp off` at the beginning:
 
 ```cs
 // dead-csharp off
 
 using System;
 // ...
+```
+
+In case you want to disable the checks for a single comment, write
+`dead-csharp ignore this comment` in it (*e.g.*, at the beginning or
+at the end):
+
+```cs
+/*
+  This comment is a false positive;
+  it should not be reported as dead code.
+
+  dead-csharp ignore this comment
+*/
 ```
 
 Mind that dead-csharp ignores comments starting with `///` by design so you can

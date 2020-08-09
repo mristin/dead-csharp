@@ -114,6 +114,18 @@ namespace DeadCsharp.Test
         [TestCase("/// test me", true)]
         [TestCase("///////", true)]
         [TestCase("/// /* */", true)]
+        [TestCase(
+                "/*\n" +
+                "  dead-csharp ignore this comment\n" +
+                "  var x = 1;\n" +
+                "*/",
+                true)]
+        [TestCase(
+                "/*\n" +
+                "  var x = 1;\n" +
+                "  dead-csharp ignore this comment\n" +
+                "*/",
+                true)]
         [TestCase("not parsable c# code", true)]
         [TestCase("//test me", false)]
         [TestCase("// test me", false)]
