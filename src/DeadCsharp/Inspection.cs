@@ -125,6 +125,7 @@ namespace DeadCsharp
         public static bool ShouldSkipTrivia(string triviaAsString)
         {
             return triviaAsString.StartsWith("///") ||
+                   triviaAsString.Contains("dead-csharp ignore this comment") ||
                    (!triviaAsString.StartsWith("//") && !triviaAsString.StartsWith("/*"));
         }
 
