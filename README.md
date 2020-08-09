@@ -73,11 +73,27 @@ dotnet tool install DeadCsharp
 
 You run dead-csharp through `dotnet`.
 
-To obtain help:
+To obtain an overview of the command-line arguments, use `--help`:
 
 ```bash
 dotnet dead-csharp --help
 ```
+<!--- Help starts. -->
+```
+DeadCsharp:
+  Examines the C# code for dead code in the comments.
+
+Usage:
+  DeadCsharp [options]
+
+Options:
+  -i, --inputs <inputs> (REQUIRED)    Glob patterns of the files to be inspected
+  -e, --excludes <excludes>           Glob patterns of the files to be excluded from inspection
+  -r, --remove                        If set, removes the comments suspected to contain dead code
+  --version                           Show version information
+  -?, -h, --help                      Show help and usage information
+```
+<!--- Help ends. -->
 
 You specify which files need to be checked using glob patterns:
 
