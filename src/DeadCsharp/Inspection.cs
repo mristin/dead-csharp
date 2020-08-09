@@ -166,7 +166,7 @@ namespace DeadCsharp
 
         private static readonly List<string> FeatureSubstrings = new List<string>
         {
-            "//", "/*", "*/", "||", "&&"
+            " //", "\t//", "/*", "*/", "||", "&&"
         };
 
         private static readonly Regex AllWhitespaceRegex = new Regex(@"^[ \t]*$");
@@ -277,6 +277,15 @@ namespace DeadCsharp
                             lineIndex + lineOffset,
                             first + columnOffset));
                 }
+                else if (line.Length - first >= 2 && line.Substring(first, 2) == "//")
+                {
+                    (cues ??= new List<Cue>()).Add(
+                        new Cue(
+                            new Prefixed("//"),
+                            lineIndex + lineOffset,
+                            first + columnOffset));
+                }
+
 
                 char lastChar = line[last];
                 if (lastChar == ';' || lastChar == '(' || lastChar == '{' || lastChar == '}' || lastChar == '=')
