@@ -7,6 +7,7 @@ using System.CommandLine;
 
 namespace DeadCsharp
 {
+    // ReSharper disable once ClassNeverInstantiated.Global
     public class Program
     {
         private static int Handle(string[] inputs, string[]? excludes, bool remove)
@@ -42,15 +43,9 @@ namespace DeadCsharp
                 {
                     IEnumerable<Inspection.Suspect> suspects = Inspection.Inspect(tree);
 
-                    var hasSuspect = new Output.HasSuspect();
-                    IEnumerable<string> lines = Output.Report(path, suspects, hasSuspect);
+                    bool hasSuspect = Output.Report(path, suspects, Console.Out);
 
-                    foreach (string line in lines)
-                    {
-                        Console.WriteLine(line);
-                    }
-
-                    if (hasSuspect.Value)
+                    if (hasSuspect)
                     {
                         exitCode = 1;
                     }
