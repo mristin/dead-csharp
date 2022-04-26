@@ -18,7 +18,7 @@ jobs:
       - name: Install .NET core
         uses: actions/setup-dotnet@v1
         with:
-          dotnet-version: '3.1.100'
+          dotnet-version: '6.x'
 
       - name: Restore dotnet tools
         working-directory: src
@@ -26,7 +26,7 @@ jobs:
 
       - name: Check format
         working-directory: src
-        run: dotnet format --check
+        run: dotnet format --verify-no-changes
 
       - name: dotnet publish
         working-directory: src
