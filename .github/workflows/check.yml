@@ -15,10 +15,15 @@ jobs:
       - name: Check the commit message(s)
         uses: mristin/opinionated-commit-message@v2.1.2
 
-      - name: Install .NET core
+      - name: Install .NET
         uses: actions/setup-dotnet@v1
         with:
           dotnet-version: '6.x'
+
+      - name: Setup .NET 5.0 (needed for coveralls.net)
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: 5.0.x
 
       - name: Restore dotnet tools
         working-directory: src
