@@ -4,6 +4,8 @@ using InvalidOperationException = System.InvalidOperationException;
 using Regex = System.Text.RegularExpressions.Regex;
 
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace DeadCsharp
 {
@@ -78,6 +80,34 @@ namespace DeadCsharp
                     Regex regex = Inspection.CodeRegexes[identifier];
                     writer.WriteLine($"  * \"{identifier}\": {regex}");
                 }
+            }
+
+            if (!hasSuspect)
+            {
+                writer.WriteLine($"OK   {path}");
+            }
+
+            return hasSuspect;
+        }
+
+        /// <summary>
+        /// Generates the report in "FAIL [path]: [count]" format.
+        /// </summary>
+        /// <param name="path">Path to the inspected file</param>
+        /// <param name="suspects">Suspect comments</param>
+        /// <param name="writer">Writer that writes the report</param>
+        /// <returns>true if there was at least one suspect comment</returns>
+        public static bool ReportCountByFile(
+            string path, IEnumerable<Inspection.Suspect> suspects, TextWriter writer)
+        {
+            bool hasSuspect = false;
+
+            var matchedPatterns = new SortedSet<string>();
+
+            if (suspects.Any())
+            {
+                hasSuspect = true;
+                writer.WriteLine($"FAIL {path}: {suspects.Select(x => x.Cues?.Count ?? 0)?.Sum() ?? 0}");
             }
 
             if (!hasSuspect)
