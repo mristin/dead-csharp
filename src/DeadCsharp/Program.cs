@@ -10,7 +10,7 @@ namespace DeadCsharp
     // ReSharper disable once ClassNeverInstantiated.Global
     public class Program
     {
-        private static int Handle(string[] inputs, string[]? excludes, bool remove)
+        private static int Handle(string[] inputs, string[]? excludes, bool remove, string? output)
         {
             int exitCode = 0;
 
@@ -43,7 +43,18 @@ namespace DeadCsharp
                 {
                     IEnumerable<Inspection.Suspect> suspects = Inspection.Inspect(tree);
 
-                    bool hasSuspect = Output.Report(path, suspects, Console.Out);
+                    bool hasSuspect = false;
+
+                    switch (output)
+                    {
+                        case "count-by-file":
+                            hasSuspect = Output.ReportCountByFile(path, suspects, Console.Out);
+                            break;
+
+                        default:
+                            hasSuspect = Output.Report(path, suspects, Console.Out);
+                            break;
+                    }
 
                     if (hasSuspect)
                     {
@@ -71,12 +82,15 @@ namespace DeadCsharp
 
                 new Option<bool>(
                     new[] {"--remove", "-r"},
-                    "If set, removes the comments suspected to contain dead code"
-                )
+                    "If set, removes the comments suspected to contain dead code"),
+
+                new Option<string>(
+                    new[] {"--output", "-o"},
+                    "Select output format. Possible values: list-comments (default), count-by-file")
             };
 
             rootCommand.Handler = System.CommandLine.Invocation.CommandHandler.Create(
-                (string[] inputs, string[] excludes, bool remove) => Handle(inputs, excludes, remove));
+                (string[] inputs, string[] excludes, bool remove, string output) => Handle(inputs, excludes, remove, output));
 
             int exitCode = rootCommand.InvokeAsync(args).Result;
             return exitCode;
