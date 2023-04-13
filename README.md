@@ -90,6 +90,7 @@ Options:
   -i, --inputs <inputs> (REQUIRED)    Glob patterns of the files to be inspected
   -e, --excludes <excludes>           Glob patterns of the files to be excluded from inspection
   -r, --remove                        If set, removes the comments suspected to contain dead code
+  -o, --output <output>               Select output format. Possible values: list-comments (default), count-by-file
   --version                           Show version information
   -?, -h, --help                      Show help and usage information
 ```
